@@ -14,6 +14,7 @@
 """The whl modules defines classes for interacting with Python packages."""
 
 import argparse
+import email.parser
 import json
 import os
 import pkg_resources
@@ -58,13 +59,6 @@ class Wheel(object):
     # Extract the structured data from metadata.json in the WHL's dist-info
     # directory.
     with zipfile.ZipFile(self.path(), 'r') as whl:
-      # first check for metadata.json
-      try:
-        with whl.open(self._dist_info() + '/metadata.json') as f:
-          return json.loads(f.read().decode("utf-8"))
-      except KeyError:
-          pass
-      # fall back to METADATA file (https://www.python.org/dev/peps/pep-0427/)
       with whl.open(self._dist_info() + '/METADATA') as f:
         return self._parse_metadata(f.read().decode("utf-8"))
 
@@ -79,27 +73,23 @@ class Wheel(object):
             of the named "extra".
 
     Yields:
-      the names of requirements from the metadata.json
+      the names of requirements from the METADATA
     """
     # TODO(mattmoor): Is there a schema to follow for this?
     dependency_set = set()
 
-    run_requires = self.metadata().get('run_requires', [])
-    for requirement in run_requires:
-      if requirement.get('extra') != extra:
+    for requirement in self.metadata().get('run_requires'):
+      if not extra and requirement.extras:
+        # Skip extras if not requested.
+        continue
+      if extra and requirement.extras and extra not in requirement.extras:
         # Match the requirements for the extra we're looking for.
         continue
-      marker = requirement.get('environment')
-      if marker and not pkg_resources.evaluate_marker(marker):
+      if requirement.marker and not requirement.marker.evaluate({"extra": extra}):
         # The current environment does not match the provided PEP 508 marker,
         # so ignore this requirement.
         continue
-      requires = requirement.get('requires', [])
-      for entry in requires:
-        # Strip off any trailing versioning data.
-        parts = re.split('[ ><=()]', entry)
-        dependency_set.add(parts[0])
-
+      dependency_set.add(requirement.project_name)
     return dependency_set
 
   def extras(self):
@@ -109,11 +99,35 @@ class Wheel(object):
     with zipfile.ZipFile(self.path(), 'r') as whl:
       whl.extractall(directory)
 
-  # _parse_metadata parses METADATA files according to https://www.python.org/dev/peps/pep-0314/
+  # _parse_metadata parses METADATA files according to PEP 314, 345, and 566.
   def _parse_metadata(self, content):
-    # TODO: handle fields other than just name
-    name_pattern = re.compile('Name: (.*)')
-    return { 'name': name_pattern.search(content).group(1) }
+    metadata = email.parser.Parser().parsestr(content)
+    requirements = list(pkg_resources.parse_requirements(
+      metadata.get_all('Requires', []) + metadata.get_all('Requires-Dist', []),
+    ))
+    # Extras may also appear at the end of a marker:
+    # https://github.com/pypa/wheel/blob/c4d2b4b81ba6c2de26da8595c9dd9717964f510c/wheel/metadata.py#L13-L14
+    def find_marker_extra(markers):
+      if isinstance(markers, list):
+        return find_marker_extra(markers[-1])
+      elif isinstance(markers, tuple):
+        lhs, op, rhs = markers
+        if isinstance(lhs, pkg_resources.packaging.markers.Variable) and lhs.value == "extra":
+          return rhs.value
+      else:
+        return None
+    extras = set()
+    for requirement in requirements:
+      if requirement.marker:
+        marker_extra = find_marker_extra(requirement.marker._markers)
+        if marker_extra:
+          requirement.extras += (marker_extra,)
+      extras.update(requirement.extras)
+    return {
+      'name': metadata.get("name"),
+      'run_requires': requirements,
+      'extras': extras,
+    }
 
 
 parser = argparse.ArgumentParser(

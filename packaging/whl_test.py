@@ -35,7 +35,7 @@ class WheelTest(unittest.TestCase):
     self.assertEqual(set(wheel.dependencies()),
                      set(['enum34', 'futures', 'protobuf', 'six']))
     self.assertEqual('pypi__grpcio_1_6_0', wheel.repository_name())
-    self.assertEqual([], wheel.extras())
+    self.assertEqual(set(), wheel.extras())
 
   def test_futures_whl(self):
     td = TestData('futures_3_1_1_whl/file/futures-3.1.1-py2-none-any.whl')
@@ -45,7 +45,7 @@ class WheelTest(unittest.TestCase):
     self.assertEqual(wheel.version(), '3.1.1')
     self.assertEqual(set(wheel.dependencies()), set())
     self.assertEqual('pypi__futures_3_1_1', wheel.repository_name())
-    self.assertEqual([], wheel.extras())
+    self.assertEqual(set(), wheel.extras())
 
   def test_whl_with_METADATA_file(self):
     td = TestData('futures_2_2_0_whl/file/futures-2.2.0-py2.py3-none-any.whl')
@@ -78,17 +78,17 @@ class WheelTest(unittest.TestCase):
   def test_mock_whl_extras(self, *args):
     td = TestData('mock_whl/file/mock-2.0.0-py2.py3-none-any.whl')
     wheel = whl.Wheel(td)
-    self.assertEqual(['docs', 'test'], wheel.extras())
-    self.assertEqual(set(wheel.dependencies(extra='docs')), set(['sphinx']))
-    self.assertEqual(set(wheel.dependencies(extra='test')), set(['unittest2']))
+    self.assertEqual({'docs', 'test'}, wheel.extras())
+    self.assertEqual(set(wheel.dependencies(extra='docs')), set(['funcsigs', 'pbr', 'six', 'sphinx']))
+    self.assertEqual(set(wheel.dependencies(extra='test')), set(['funcsigs', 'pbr', 'six', 'unittest2']))
 
   @patch('platform.python_version', return_value='3.0.0')
   def test_mock_whl_extras_3_0(self, *args):
     td = TestData('mock_whl/file/mock-2.0.0-py2.py3-none-any.whl')
     wheel = whl.Wheel(td)
-    self.assertEqual(['docs', 'test'], wheel.extras())
-    self.assertEqual(set(wheel.dependencies(extra='docs')), set(['sphinx', 'Pygments', 'jinja2']))
-    self.assertEqual(set(wheel.dependencies(extra='test')), set(['unittest2']))
+    self.assertEqual({'docs', 'test'}, wheel.extras())
+    self.assertEqual(set(wheel.dependencies(extra='docs')), set(['funcsigs', 'pbr', 'six', 'sphinx', 'Pygments', 'jinja2']))
+    self.assertEqual(set(wheel.dependencies(extra='test')), set(['funcsigs', 'pbr', 'six', 'unittest2']))
 
   @patch('platform.python_version', return_value='2.7.13')
   def test_google_cloud_language_whl(self, *args):
@@ -98,23 +98,25 @@ class WheelTest(unittest.TestCase):
     self.assertEqual(wheel.name(), 'google-cloud-language')
     self.assertEqual(wheel.distribution(), 'google_cloud_language')
     self.assertEqual(wheel.version(), '0.29.0')
-    expected_deps = ['google-gax', 'google-cloud-core',
-                     'googleapis-common-protos[grpc]', 'enum34']
-    self.assertEqual(set(wheel.dependencies()),
-                     set(expected_deps))
+    self.assertEqual({'grpc'}, wheel.extras())
+    self.assertEqual(wheel.dependencies(),
+                     set(['google-gax', 'google-cloud-core', 'enum34']))
+    self.assertEqual(wheel.dependencies(extra='grpc'),
+                     set(['google-gax', 'google-cloud-core', 'googleapis-common-protos', 'enum34']))
     self.assertEqual('pypi__google_cloud_language_0_29_0',
                      wheel.repository_name())
-    self.assertEqual([], wheel.extras())
+    self.assertEqual(set(['grpc']), wheel.extras())
 
   @patch('platform.python_version', return_value='3.4.0')
   def test_google_cloud_language_whl_3_4(self, *args):
     td = TestData('google_cloud_language_whl/file/' +
                   'google_cloud_language-0.29.0-py2.py3-none-any.whl')
     wheel = whl.Wheel(td)
-    expected_deps = ['google-gax', 'google-cloud-core',
-                     'googleapis-common-protos[grpc]']
-    self.assertEqual(set(wheel.dependencies()),
-                     set(expected_deps))
+    self.assertEqual(set(['grpc']), wheel.extras())
+    self.assertEqual(wheel.dependencies(),
+                     set(['google-gax', 'google-cloud-core']))
+    self.assertEqual(wheel.dependencies(extra='grpc'),
+                     set(['google-gax', 'google-cloud-core', 'googleapis-common-protos']))
 
 if __name__ == '__main__':
   unittest.main()
